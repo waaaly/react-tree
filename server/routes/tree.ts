@@ -43,7 +43,10 @@ router.get('/children/:parentId', (req, res) => {
     const offset = parseInt(req.query.offset as string) || 0;
 
     const nodes = getChildren(parentId, limit, offset);
-    res.json({ success: true, data: nodes });
+    setTimeout(() => {
+
+      res.json({ success: true, data: nodes });
+    }, 1000);
   } catch (error) {
     console.error('Error getting children:', error);
     res.status(500).json({ success: false, error: 'Failed to get children' });

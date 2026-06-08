@@ -1,5 +1,38 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
-import { NodeId, TreeNode, VisiableNode } from '../components/tree.js';
+import { NodeId, TreeNode, VisiableNode, collapseNode } from '../components/tree.js';
+
+/**
+ * LRU 缓存实现
+ * 基于 Map 的插入顺序实现最近最少使用淘汰策略
+ */
+class LRUCache<K, V> extends Map<K, V> {
+  private maxSize: number;
+
+  constructor(maxSize: number) {
+    super();
+    this.maxSize = maxSize;
+  }
+
+  get(key: K): V | undefined {
+    if (!super.has(key)) return undefined;
+    const value = super.get(key)!;
+    // 重新插入以标记为最近使用
+    super.delete(key);
+    super.set(key, value);
+    return value;
+  }
+
+  set(key: K, value: V): this {
+    if (super.has(key)) {
+      super.delete(key);
+    } else if (super.size >= this.maxSize) {
+      // 淘汰最久未使用的（Map 迭代顺序中第一个 key）
+      const lruKey = super.keys().next().value as K;
+      super.delete(lruKey);
+    }
+    return super.set(key, value);
+  }
+}
 
 /**
  * useExpandNodes Hook 配置选项
@@ -11,6 +44,8 @@ export interface UseExpandNodesOptions {
   rootNodes: TreeNode[];
   /** 默认展开的节点ID列表 */
   defaultExpanded?: NodeId[];
+  /** 节点缓存最大容量（LRU 淘汰），默认 500 */
+  maxCacheSize?: number;
   /** 子节点加载完成回调（用于外部 hook 注入级联逻辑，如自动勾选） */
   onChildrenLoaded?: (parentId: NodeId, children: TreeNode[]) => void;
 }
@@ -23,6 +58,8 @@ export interface UseExpandNodesReturn {
   visibleNodes: VisiableNode[];
   /** 已展开节点ID集合 */
   expandedNodes: Set<NodeId>;
+  /** 加载中的节点ID集合 */
+  loadingNodes: Set<NodeId>;
   /** 获取节点缓存（供 useSelectedNodes / useCheckedNodes 使用） */
   getNodeCache: () => Map<NodeId, TreeNode & { children?: NodeId[] }>;
   /** 展开指定节点 */
@@ -48,13 +85,16 @@ export interface UseExpandNodesReturn {
  * 管理树节点的展开/折叠状态，支持按需加载子节点
  */
 export function useExpandNodes(options: UseExpandNodesOptions): UseExpandNodesReturn {
-  const { loadChildren, rootNodes, defaultExpanded = [], onChildrenLoaded } = options;
+  const { loadChildren, rootNodes, defaultExpanded = [], maxCacheSize = 500, onChildrenLoaded } = options;
 
-  // 节点缓存：存储所有已加载的节点及其子节点ID列表
-  const nodeCache = useRef<Map<NodeId, TreeNode & { children?: NodeId[] }>>(new Map());
+  // 节点缓存：LRU 淘汰策略，存储所有已加载的节点及其子节点ID列表
+  const nodeCache = useRef<LRUCache<NodeId, TreeNode & { children?: NodeId[] }>>(new LRUCache(maxCacheSize));
 
   // 展开状态集合
   const [expandedNodes, setExpandedNodes] = useState<Set<NodeId>>(new Set(defaultExpanded));
+
+  // 加载中的节点集合
+  const [loadingNodes, setLoadingNodes] = useState<Set<NodeId>>(new Set());
 
   // 初始化根节点到缓存
   const initializeRootNodes = useCallback(() => {
@@ -85,6 +125,7 @@ export function useExpandNodes(options: UseExpandNodesOptions): UseExpandNodesRe
         isLeaf: !node.hasChildren,
         sortOrder: (node as any).sortOrder ?? 0,
         expanded: isNodeExpanded,
+        loading: loadingNodes.has(nodeId),
       });
 
       // 如果已展开且有子节点，按 sortOrder 排序后递归遍历
@@ -107,7 +148,7 @@ export function useExpandNodes(options: UseExpandNodesOptions): UseExpandNodesRe
     });
 
     return result;
-  }, [rootNodes, expandedNodes]);
+  }, [rootNodes, expandedNodes, loadingNodes]);
 
   // 可见节点列表（根据展开状态动态计算）
   const visibleNodes = useMemo(() => {
@@ -126,6 +167,7 @@ export function useExpandNodes(options: UseExpandNodesOptions): UseExpandNodesRe
 
     // 如果子节点未加载，先加载
     if (!node.children && node.hasChildren) {
+      setLoadingNodes(prev => new Set([...prev, nodeId]));
       try {
         const children = await loadChildren(nodeId);
         // 缓存子节点，按 sortOrder 排序
@@ -142,8 +184,10 @@ export function useExpandNodes(options: UseExpandNodesOptions): UseExpandNodesRe
         }
       } catch (error) {
         console.error(`Failed to load children for node ${nodeId}:`, error);
+        setLoadingNodes(prev => { const next = new Set(prev); next.delete(nodeId); return next; });
         return;
       }
+      setLoadingNodes(prev => { const next = new Set(prev); next.delete(nodeId); return next; });
     }
 
     // 添加到展开集合
@@ -156,11 +200,7 @@ export function useExpandNodes(options: UseExpandNodesOptions): UseExpandNodesRe
   const collapse = useCallback((nodeId: NodeId): void => {
     if (!expandedNodes.has(nodeId)) return;
 
-    setExpandedNodes(prev => {
-      const next = new Set(prev);
-      next.delete(nodeId);
-      return next;
-    });
+    setExpandedNodes(prev => collapseNode(prev, nodeId));
   }, [expandedNodes]);
 
   /**
@@ -181,14 +221,19 @@ export function useExpandNodes(options: UseExpandNodesOptions): UseExpandNodesRe
   const expandAll = useCallback(async (): Promise<void> => {
     const toExpand: NodeId[] = [];
 
-    async function traverseAndExpand(nodeId: NodeId): Promise<void> {
+    // 使用队列迭代（BFS），避免深层树递归导致栈溢出
+    const queue: NodeId[] = rootNodes.map(n => n.id);
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
       const node = nodeCache.current.get(nodeId);
-      if (!node) return;
+      if (!node) continue;
 
       toExpand.push(nodeId);
 
       // 加载子节点
       if (node.hasChildren && !node.children) {
+        setLoadingNodes(prev => new Set([...prev, nodeId]));
         try {
           const children = await loadChildren(nodeId);
           const sorted = [...children].sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -202,21 +247,16 @@ export function useExpandNodes(options: UseExpandNodesOptions): UseExpandNodesRe
           }
         } catch (error) {
           console.error(`Failed to load children for node ${nodeId}:`, error);
-          return;
+          setLoadingNodes(prev => { const next = new Set(prev); next.delete(nodeId); return next; });
+          continue;
         }
+        setLoadingNodes(prev => { const next = new Set(prev); next.delete(nodeId); return next; });
       }
 
-      // 递归展开子节点
+      // 将子节点入队
       if (node.children) {
-        for (const childId of node.children) {
-          await traverseAndExpand(childId);
-        }
+        queue.push(...node.children);
       }
-    }
-
-    // 从根节点开始
-    for (const node of rootNodes) {
-      await traverseAndExpand(node.id);
     }
 
     setExpandedNodes(new Set(toExpand));
@@ -255,6 +295,7 @@ export function useExpandNodes(options: UseExpandNodesOptions): UseExpandNodesRe
     const node = nodeCache.current.get(nodeId);
     if (!node) return;
 
+    setLoadingNodes(prev => new Set([...prev, nodeId]));
     try {
       const children = await loadChildren(nodeId);
       // 清除旧的子节点缓存
@@ -274,11 +315,13 @@ export function useExpandNodes(options: UseExpandNodesOptions): UseExpandNodesRe
     } catch (error) {
       console.error(`Failed to refresh children for node ${nodeId}:`, error);
     }
+    setLoadingNodes(prev => { const next = new Set(prev); next.delete(nodeId); return next; });
   }, [loadChildren]);
 
   return {
     visibleNodes,
     expandedNodes,
+    loadingNodes,
     getNodeCache: () => nodeCache.current,
     expand,
     collapse,

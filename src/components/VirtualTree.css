@@ -184,6 +184,17 @@
   /* 不旋转，通过 ▼ 字符已表达展开状态 */
 }
 
+.expand-icon.loading {
+  animation: spin 1s linear infinite;
+  cursor: default;
+  color: #1890ff;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ==================== 复选框 ==================== */
 
 .node-checkbox {

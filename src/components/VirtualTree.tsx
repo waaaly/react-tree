@@ -59,6 +59,7 @@ const VirtualTree: React.FC<VirtualTreeProps> = ({
     collapseAll,
     isExpanded,
     getNodeCache,
+    loadingNodes,
   } = useExpandNodes({
     rootNodes,
     loadChildren: async (parentId) => {
@@ -270,6 +271,7 @@ const VirtualTree: React.FC<VirtualTreeProps> = ({
                 key={node.id}
                 node={node}
                 isExpanded={isExpanded(node.id)}
+                isLoading={loadingNodes.has(node.id)}
                 isSelected={isSelected(node.id)}
                 isChecked={isChecked(node.id)}
                 isIndeterminate={isIndeterminate(node.id)}
@@ -293,6 +295,7 @@ const VirtualTree: React.FC<VirtualTreeProps> = ({
 interface TreeNodeItemProps {
   node: VisiableNode;
   isExpanded: boolean;
+  isLoading: boolean;
   isSelected: boolean;
   isChecked: boolean;
   isIndeterminate: boolean;
@@ -306,6 +309,7 @@ interface TreeNodeItemProps {
 const TreeNodeItem: React.FC<TreeNodeItemProps> = ({
   node,
   isExpanded,
+  isLoading,
   isSelected,
   isChecked,
   isIndeterminate,
@@ -328,13 +332,13 @@ const TreeNodeItem: React.FC<TreeNodeItemProps> = ({
       onClick={onClick}
     >
       <span
-        className={`expand-icon ${showExpandIcon ? 'has-children' : ''} ${isExpanded ? 'expanded' : ''}`}
+        className={`expand-icon ${showExpandIcon ? 'has-children' : ''} ${isExpanded ? 'expanded' : ''} ${isLoading ? 'loading' : ''}`}
         onClick={e => {
           e.stopPropagation();
-          if (showExpandIcon) onToggle();
+          if (showExpandIcon && !isLoading) onToggle();
         }}
       >
-        {showExpandIcon ? (isExpanded ? '▼' : '▶') : ''}
+        {isLoading ? '⏳' : showExpandIcon ? (isExpanded ? '▼' : '▶') : ''}
       </span>
       <span
         className={`node-checkbox ${checkClass}`}
