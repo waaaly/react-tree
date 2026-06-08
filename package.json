@@ -1,0 +1,38 @@
+{
+  "name": "tree-react",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:vite\" \"npm run dev:server\"",
+    "dev:vite": "vite",
+    "dev:server": "cross-env NODE_ENV=development nodemon",
+    "build": "tsc && vite build",
+    "server:build": "tsc -p tsconfig.server.json",
+    "start": "node dist-server/index.js",
+    "preview": "npm run build && npm run server:build && cross-env NODE_ENV=production npm start"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "nodemon": "^3.1.14",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.22.4",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12"
+  },
+  "dependencies": {
+    "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
+    "better-sqlite3": "^12.10.0",
+    "express": "^5.2.1",
+    "http-proxy-middleware": "^4.0.0"
+  }
+}

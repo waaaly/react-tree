@@ -1,0 +1,12 @@
+{
+  "watch": ["server"],
+  "ext": "ts",
+  "ignore": [
+    "server/**/*.js",
+    "server/**/*.d.ts",
+    "server/**/*.map",
+    "dist-server/**/*"
+  ],
+  "delay": "1000",
+  "exec": "tsx server/index.ts"
+}
