@@ -17,7 +17,7 @@ import {
 import {
   generateLargeTree,
   generateBalancedTree,
-  GenerateOptions,
+  LocalGenerateOptions,
 } from '../db/treeGenerator.js';
 
 import {
@@ -148,7 +148,7 @@ export async function toggleNodeExpand(nodeId: NodeId, expanded: boolean): Promi
 /**
  * 生成测试数据
  */
-export async function generateTreeData(options: GenerateOptions): Promise<void> {
+export async function generateTreeData(options: LocalGenerateOptions): Promise<void> {
   await initTreeData();
   await generateLargeTree(options);
 }

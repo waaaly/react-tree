@@ -12,6 +12,9 @@ import {
   NodeMap,
   ChildrenMap,
 } from '../components/tree.js';
+import type { GenerateOptions } from '../../shared/types.js';
+
+export type { GenerateOptions };
 
 // API 基础路径
 const API_BASE = '/api/tree';
@@ -165,15 +168,6 @@ export async function moveTreeNode(
 }
 
 // ==================== 数据生成 ====================
-
-export interface GenerateOptions {
-  /** 根节点数量 */
-  roots: number;
-  /** 最大深度（根节点深度为 1） */
-  maxDepth: number;
-  /** 每个非叶子节点的分支因子 */
-  childrenPerNode: number;
-}
 
 /**
  * 根据 roots, depth, childrenPerNode 计算理论总节点数

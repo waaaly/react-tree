@@ -1,12 +1,8 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
-import { TreeNode, VisiableNode, ParentId } from '../components/tree.js';
+import { ParentId } from '../components/tree.js';
+import type { SQLiteTreeNode } from '../../shared/types.js';
 
-// 类型定义
-export type SQLiteTreeNode = Pick<TreeNode, 'id' | 'name' | 'hasChildren'> &
-  Pick<VisiableNode, 'level' | 'isLeaf' | 'sortOrder'> & {
-    parentId: ParentId | null;
-    path: string;
-  };
+export type { SQLiteTreeNode };
 
 // 全局状态
 let sqlite3: any = null;

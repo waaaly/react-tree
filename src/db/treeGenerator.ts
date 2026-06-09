@@ -1,12 +1,12 @@
 import { insertNode, initDatabase,  } from './sqlite.js';
 
-export interface GenerateOptions {
+export interface LocalGenerateOptions {
   maxDepth: number;
   childrenPerNode: number;
   totalNodes: number;
 }
 
-export async function generateLargeTree(options: GenerateOptions): Promise<void> {
+export async function generateLargeTree(options: LocalGenerateOptions): Promise<void> {
   await initDatabase();
 
   const { maxDepth, childrenPerNode, totalNodes } = options;
@@ -97,7 +97,7 @@ export async function generateBalancedTree(depth: number, branchingFactor: numbe
   return totalNodes;
 }
 
-export async function generateTreeWithMetadata(options: GenerateOptions): Promise<void> {
+export async function generateTreeWithMetadata(options: LocalGenerateOptions): Promise<void> {
   await initDatabase();
 
   const { maxDepth, childrenPerNode, totalNodes } = options;

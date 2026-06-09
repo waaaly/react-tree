@@ -2,6 +2,10 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import type { SQLiteTreeNode } from '../../shared/types.js';
+
+// 重导出，保持向后兼容
+export type { SQLiteTreeNode };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,18 +44,6 @@ db.exec(`
 `);
 
 console.log('Database initialized at:', dbPath);
-
-// 类型定义
-export interface SQLiteTreeNode {
-  id: number;
-  parentId: number | null;
-  name: string;
-  level: number;
-  path: string;
-  hasChildren: boolean;
-  sortOrder: number;
-  isLeaf: boolean;
-}
 
 /**
  * 插入节点

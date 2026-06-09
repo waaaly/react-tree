@@ -1,13 +1,7 @@
 import { insertNodesBatch, SQLiteTreeNode } from './sqlite.js';
+import type { GenerateOptions } from '../../shared/types.js';
 
-export interface GenerateOptions {
-  /** 根节点数量 */
-  roots: number;
-  /** 最大深度（根节点深度为 1） */
-  maxDepth: number;
-  /** 每个非叶子节点的分支因子 */
-  childrenPerNode: number;
-}
+export type { GenerateOptions };
 
 /**
  * 根据 roots, depth, childrenPerNode 计算理论总节点数
