@@ -236,7 +236,7 @@ export function useExpandNodes(options: UseExpandNodesOptions): UseExpandNodesRe
         setLoadingNodes(prev => new Set([...prev, nodeId]));
         try {
           const children = await loadChildren(nodeId);
-          const sorted = [...children].sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+          const sorted = [...children].sort((a: TreeNode, b: TreeNode) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
           sorted.forEach(child => {
             nodeCache.current.set(child.id, { ...child, children: undefined });
           });

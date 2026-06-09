@@ -45,7 +45,7 @@ export function generateLargeTree(options: GenerateOptions): number {
       parentId: null,
       name: rootName,
       level: 1,
-      path: rootName,
+      path: String(r),
       hasChildren: maxDepth > 1,
       isLeaf: maxDepth <= 1,
       sortOrder: r,

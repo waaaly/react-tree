@@ -246,3 +246,32 @@
   flex-shrink: 0;
   margin-left: 12px;
 }
+
+/* ==================== 拖拽状态 ==================== */
+
+.tree-node.dragging {
+  opacity: 0.4;
+}
+
+/* 占位线 — before：顶部蓝色横线 */
+.tree-node.drag-over-before {
+  border-top: 2px solid #1890ff;
+}
+
+/* 占位线 — after：底部蓝色横线 */
+.tree-node.drag-over-after {
+  border-bottom: 2px solid #1890ff;
+}
+
+/* 拖入内部 — 蓝色高亮背景 + 虚线框 */
+.tree-node.drag-over-inside {
+  background-color: rgba(24, 144, 255, 0.1);
+  outline: 2px dashed #1890ff;
+  outline-offset: -2px;
+}
+
+/* 禁止放置 — 灰色禁用态 */
+.tree-node.drop-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

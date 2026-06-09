@@ -6,6 +6,7 @@ import {
   searchNodes,
   getNodeCount,
   clearAllData,
+  moveNode,
 } from '../db/sqlite.js';
 import {
   generateLargeTree,
@@ -46,7 +47,7 @@ router.get('/children/:parentId', (req, res) => {
     setTimeout(() => {
 
       res.json({ success: true, data: nodes });
-    }, 1000);
+    }, 200);
   } catch (error) {
     console.error('Error getting children:', error);
     res.status(500).json({ success: false, error: 'Failed to get children' });
@@ -182,6 +183,32 @@ router.delete('/clear', (req, res) => {
   } catch (error) {
     console.error('Error clearing data:', error);
     res.status(500).json({ success: false, error: 'Failed to clear data' });
+  }
+});
+
+/**
+ * 移动节点
+ * POST /api/tree/move
+ * Body: { nodeId, newParentId?, insertIndex? }
+ */
+router.post('/move', (req, res) => {
+  try {
+    const { nodeId, newParentId, insertIndex } = req.body;
+
+    if (nodeId == null) {
+      return res.status(400).json({ success: false, error: 'nodeId is required' });
+    }
+
+    moveNode(
+      Number(nodeId),
+      newParentId != null ? Number(newParentId) : null,
+      insertIndex != null ? Number(insertIndex) : -1
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error moving node:', error);
+    res.status(400).json({ success: false, error: error.message || 'Failed to move node' });
   }
 });
 

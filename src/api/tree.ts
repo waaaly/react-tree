@@ -140,6 +140,30 @@ export async function toggleNodeExpand(nodeId: NodeId, expanded: boolean): Promi
   console.log(`Toggle node ${nodeId} expanded: ${expanded}`);
 }
 
+/**
+ * 移动节点到新位置
+ * @param nodeId - 被移动的节点 ID
+ * @param newParentId - 新父节点 ID（'root' 表示根层级）
+ * @param insertIndex - 在新兄弟中的插入位置（可选，-1 表示末尾）
+ */
+export async function moveTreeNode(
+  nodeId: NodeId,
+  newParentId: ParentId,
+  insertIndex?: number
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      nodeId,
+      newParentId: newParentId === 'root' ? null : newParentId,
+      insertIndex: insertIndex ?? -1,
+    }),
+  });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error);
+}
+
 // ==================== 数据生成 ====================
 
 export interface GenerateOptions {

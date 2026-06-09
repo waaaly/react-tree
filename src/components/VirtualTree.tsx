@@ -3,12 +3,14 @@ import {
   getTreeRootNodes,
   getTreeChildren,
   searchTreeNodes,
+  moveTreeNode,
 } from '../api/tree.js';
 import { useExpandNodes } from '../hooks/useExpandNodes.js';
 import { useSelectedNodes } from '../hooks/useSelectedNodes.js';
 import { useCheckedNodes } from '../hooks/useCheckedNodes.js';
+import { useDragNode } from '../hooks/useDragNode.js';
 import './VirtualTree.css';
-import { VisiableNode, TreeNode } from './tree.js';
+import { VisiableNode,  NodeId, TreeNode } from './tree.js';
 
 interface VirtualTreeProps {
   itemHeight?: number;
@@ -38,7 +40,7 @@ const VirtualTree: React.FC<VirtualTreeProps> = ({
   const [isSearching, setIsSearching] = useState(false);
 
   // 用 ref 延迟绑定 getNodeCache（useCheckedNodes 先于 useExpandNodes 调用）
-  const getNodeCacheRef = useRef<(() => Map<string | number, TreeNode & { children?: Array<string | number> }>) | null>(null);
+  const getNodeCacheRef = useRef<(() => Map<NodeId, TreeNode & { children?: Array<NodeId> }>) | null>(null);
 
   // 使用 useCheckedNodes Hook 管理勾选状态（需要在 useExpandNodes 之前调用，供 onChildrenLoaded 闭包使用）
   const {
@@ -60,6 +62,7 @@ const VirtualTree: React.FC<VirtualTreeProps> = ({
     isExpanded,
     getNodeCache,
     loadingNodes,
+    refreshChildren,
   } = useExpandNodes({
     rootNodes,
     loadChildren: async (parentId) => {
@@ -85,6 +88,30 @@ const VirtualTree: React.FC<VirtualTreeProps> = ({
     clearSelection,
   } = useSelectedNodes({
     getNodeCache,
+  });
+
+  // 使用 useDragNode Hook 管理拖拽排序与移动
+  const {
+    dragState,
+    isDropAllowed,
+    onDragStart,
+    onDragOver,
+    onDragLeave,
+    onDrop,
+    onDragEnd,
+  } = useDragNode({
+    getNodeCache,
+    onMove: async (nodeId, newParentId, insertIndex) => {
+      await moveTreeNode(nodeId, newParentId, insertIndex);
+    },
+    onRefresh: async (parentId) => {
+      if (parentId === 'root') {
+        const roots = await getTreeRootNodes(1000, 0);
+        setRootNodes(roots);
+      } else {
+        await refreshChildren(parentId);
+      }
+    },
   });
 
   // 初始化加载根节点
@@ -276,6 +303,10 @@ const VirtualTree: React.FC<VirtualTreeProps> = ({
                 isChecked={isChecked(node.id)}
                 isIndeterminate={isIndeterminate(node.id)}
                 isSearchMode={isSearchMode}
+                isDragging={dragState.draggingId === node.id}
+                isDragOver={dragState.overId === node.id}
+                dropPosition={dragState.overId === node.id ? dragState.dropPosition : null}
+                isDropDisabled={dragState.overId === node.id && !isDropAllowed(node.id)}
                 style={{
                   height: itemHeight,
                   paddingLeft: `${node.level * 20 + 10}px`
@@ -283,6 +314,11 @@ const VirtualTree: React.FC<VirtualTreeProps> = ({
                 onToggle={() => handleToggleExpand(node)}
                 onClick={(e) => handleNodeClick(node.id, e)}
                 onCheckToggle={(nodeId) => toggleCheck(nodeId)}
+                onDragStart={(e) => onDragStart(node.id, e)}
+                onDragOver={(e) => onDragOver(node.id, e)}
+                onDragLeave={onDragLeave}
+                onDrop={() => onDrop(node.id)}
+                onDragEnd={onDragEnd}
               />
             ))}
           </div>
@@ -300,10 +336,19 @@ interface TreeNodeItemProps {
   isChecked: boolean;
   isIndeterminate: boolean;
   isSearchMode: boolean;
+  isDragging: boolean;
+  isDragOver: boolean;
+  dropPosition: 'before' | 'after' | 'inside' | null;
+  isDropDisabled: boolean;
   style: React.CSSProperties;
   onToggle: () => void;
   onClick: (e: React.MouseEvent) => void;
   onCheckToggle: (nodeId: string | number) => void;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
 }
 
 const TreeNodeItem: React.FC<TreeNodeItemProps> = ({
@@ -314,22 +359,42 @@ const TreeNodeItem: React.FC<TreeNodeItemProps> = ({
   isChecked,
   isIndeterminate,
   isSearchMode,
+  isDragging,
+  isDragOver,
+  dropPosition,
+  isDropDisabled,
   style,
   onToggle,
   onClick,
   onCheckToggle,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
 }) => {
   const showExpandIcon = !isSearchMode && node.hasChildren;
 
-  // 根据层级生成选中态类名
   const levelClass = `tree-level-${Math.min(node.level, 5)}`;
   const checkClass = isIndeterminate ? 'indeterminate' : isChecked ? 'checked' : '';
 
+  // 拖拽视觉样式
+  const dragOverClass = isDragOver && !isDropDisabled && dropPosition
+    ? `drag-over-${dropPosition}`
+    : '';
+  const dragDisabledClass = isDropDisabled ? 'drop-disabled' : '';
+
   return (
     <div
-      className={`tree-node ${isSelected ? 'selected' : ''} ${levelClass}`}
+      className={`tree-node ${isSelected ? 'selected' : ''} ${levelClass} ${isDragging ? 'dragging' : ''} ${dragOverClass} ${dragDisabledClass}`}
       style={style}
+      draggable={!isSearchMode}
       onClick={onClick}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
     >
       <span
         className={`expand-icon ${showExpandIcon ? 'has-children' : ''} ${isExpanded ? 'expanded' : ''} ${isLoading ? 'loading' : ''}`}
