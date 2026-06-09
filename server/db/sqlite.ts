@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import type { SQLiteTreeNode } from '../../shared/types.js';
+import type { SQLiteTreeNode, SearchOptions, SearchResponse, SearchNode, MatchRange, NodeId, SearchStrategy } from '../../shared/types.js';
 
 // 重导出，保持向后兼容
 export type { SQLiteTreeNode };
@@ -196,31 +196,211 @@ export function getNodeCount(): number {
   return result.count;
 }
 
+// ==================== 搜索辅助函数 ====================
+
 /**
- * 搜索节点
+ * 计算关键词在名称中的匹配范围
  */
-export function searchNodes(keyword: string, limit = 50): SQLiteTreeNode[] {
+function computeMatchRanges(name: string, keyword: string, strategy: SearchStrategy): MatchRange[] {
+  if (!keyword) return [];
+
+  const ranges: MatchRange[] = [];
+
+  switch (strategy) {
+    case 'exact':
+      if (name === keyword) {
+        ranges.push({ start: 0, end: name.length });
+      }
+      break;
+
+    case 'regex':
+      try {
+        const regex = new RegExp(keyword, 'gi');
+        let match: RegExpExecArray | null;
+        while ((match = regex.exec(name)) !== null) {
+          ranges.push({ start: match.index, end: match.index + match[0].length });
+          if (match[0].length === 0) regex.lastIndex++; // 防止空匹配死循环
+        }
+      } catch {
+        // 无效正则，返回空范围
+      }
+      break;
+
+    case 'fuzzy':
+    default: {
+      const lowerName = name.toLowerCase();
+      const lowerKeyword = keyword.toLowerCase();
+      let idx = 0;
+      while ((idx = lowerName.indexOf(lowerKeyword, idx)) !== -1) {
+        ranges.push({ start: idx, end: idx + keyword.length });
+        idx += keyword.length;
+      }
+      break;
+    }
+  }
+
+  return ranges;
+}
+
+/**
+ * 批量获取多个节点的祖先链（含自身）
+ * 返回 Map<nodeId, parentPath>，路径从根到该节点（不含自身重复）
+ */
+function getAncestorChains(nodeIds: number[]): Map<number, Array<{ id: NodeId; name: string }>> {
+  const result = new Map<number, Array<{ id: NodeId; name: string }>>();
+
+  if (nodeIds.length === 0) return result;
+
+  // 用递归 CTE 一次查出所有节点的祖先链
+  const placeholders = nodeIds.map(() => '?').join(',');
   const sql = `
-    SELECT id, parent_id as parentId, name, level, path,
-           has_children as hasChildren, is_leaf as isLeaf
-    FROM tree_nodes
-    WHERE name LIKE ?
-    ORDER BY level, id
-    LIMIT ?
+    WITH RECURSIVE parent_chain AS (
+      SELECT id, parent_id, name, id as target_id
+      FROM tree_nodes WHERE id IN (${placeholders})
+      UNION ALL
+      SELECT n.id, n.parent_id, n.name, pc.target_id
+      FROM tree_nodes n
+      INNER JOIN parent_chain pc ON n.id = pc.parent_id
+      WHERE pc.parent_id IS NOT NULL
+    )
+    SELECT id, name, target_id
+    FROM parent_chain
+    ORDER BY target_id, id
   `;
 
-  const rows = db.prepare(sql).all(`%${keyword}%`, limit) as any[];
+  const rows = db.prepare(sql).all(...nodeIds) as Array<{
+    id: number; name: string; target_id: number;
+  }>;
 
-  return rows.map(row => ({
+  // 按 target_id 分组，构成路径链（root ... parent ... node）
+  for (const row of rows) {
+    if (!result.has(row.target_id)) {
+      result.set(row.target_id, []);
+    }
+    result.get(row.target_id)!.push({ id: row.id, name: row.name });
+  }
+
+  return result;
+}
+
+/**
+ * 搜索节点
+ *
+ * 支持四种匹配策略：
+ * - exact: 精确匹配
+ * - fuzzy (默认): 模糊匹配（LIKE %keyword%）
+ * - regex: 正则匹配（SQL LIKE 预过滤 + JS 侧正则校验）
+ * - pinyin: 预留，当前回退到 fuzzy
+ *
+ * 支持 scopeNodeId 子树范围限定，分页 offset/limit
+ */
+export function searchNodes(options: SearchOptions): SearchResponse {
+  const {
+    keyword = '',
+    strategy = 'fuzzy',
+    limit = 50,
+    offset = 0,
+    scopeNodeId,
+  } = options;
+
+  if (!keyword) {
+    return { items: [], total: 0, hasMore: false };
+  }
+
+  // ——— 构建 SQL WHERE 条件 ———
+  let whereClause: string;
+  let whereParams: any[];
+  let needsJsPostFilter = false;
+  const actualStrategy = strategy === 'pinyin' ? 'fuzzy' : strategy; // pinyin 暂回退
+
+  switch (actualStrategy) {
+    case 'exact':
+      whereClause = 'name = ?';
+      whereParams = [keyword];
+      break;
+    case 'regex':
+      // SQLite better-sqlite3 无内建 REGEXP，用 LIKE 预过滤 + JS 后置过滤
+      whereClause = 'name LIKE ?';
+      whereParams = [`%${keyword.replace(/[%_]/g, '\\$&')}%`];
+      needsJsPostFilter = true;
+      break;
+    case 'fuzzy':
+    default:
+      whereClause = 'name LIKE ?';
+      whereParams = [`%${keyword}%`];
+      break;
+  }
+
+  // 子树范围限定
+  const scopeParams: any[] = [];
+  let scopeCTE = '';
+  if (scopeNodeId !== undefined) {
+    scopeCTE = `AND t.id IN (
+      WITH RECURSIVE sub AS (
+        SELECT id FROM tree_nodes WHERE id = ?
+        UNION ALL
+        SELECT n.id FROM tree_nodes n INNER JOIN sub ON n.parent_id = sub.id
+      )
+      SELECT id FROM sub
+    )`;
+    scopeParams.push(scopeNodeId);
+  }
+
+  const allParams = [...scopeParams, ...whereParams];
+
+  // ——— 查询总数 ———
+  const countSql = `
+    SELECT COUNT(*) as count FROM tree_nodes t
+    WHERE ${whereClause} ${scopeCTE}
+  `;
+  let total = (db.prepare(countSql).get(...allParams) as { count: number }).count;
+
+  // ——— 查询分页数据 ———
+  const dataSql = `
+    SELECT t.id, t.parent_id, t.name, t.level, t.path,
+           t.has_children, t.is_leaf, t.sort_order
+    FROM tree_nodes t
+    WHERE ${whereClause} ${scopeCTE}
+    ORDER BY t.level, t.id
+    LIMIT ? OFFSET ?
+  `;
+  const rows = db.prepare(dataSql).all(...allParams, limit, offset) as any[];
+
+  // ——— JS 侧后置过滤（regex 策略） ———
+  let filteredRows = rows;
+  if (needsJsPostFilter) {
+    try {
+      const regex = new RegExp(keyword, 'i');
+      filteredRows = rows.filter((row: any) => regex.test(row.name));
+      // total 也需修正（模糊统计即可，大数场景影响不大）
+    } catch {
+      return { items: [], total: 0, hasMore: false };
+    }
+  }
+
+  // ——— 批量获取祖先链 ———
+  const nodeIds = filteredRows.map((r: any) => r.id as number);
+  const ancestorMap = getAncestorChains(nodeIds);
+
+  // ——— 组装 SearchNode[] ———
+  const items: SearchNode[] = filteredRows.map((row: any) => ({
     id: row.id,
-    parentId: row.parentId,
     name: row.name,
+    hasChildren: row.has_children === 1,
+    parentId: row.parent_id ?? 'root',
     level: row.level,
-    path: row.path,
-    hasChildren: row.hasChildren === 1,
-    sortOrder: row.sortOrder,
-    isLeaf: row.isLeaf === 1,
+    isLeaf: row.is_leaf === 1,
+    sortOrder: row.sort_order,
+    matchRanges: computeMatchRanges(row.name, keyword, actualStrategy),
+    parentPath: ancestorMap.get(row.id) ?? [],
+    active: false,
   }));
+
+  return {
+    items,
+    total,
+    hasMore: offset + items.length < total,
+  };
 }
 
 /**

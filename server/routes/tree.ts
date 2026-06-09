@@ -13,6 +13,7 @@ import {
   generateBalancedTree,
   GenerateOptions,
 } from '../db/treeGenerator.js';
+import type { SearchStrategy } from '../../shared/types.js';
 
 const router = Router();
 
@@ -73,19 +74,32 @@ router.get('/visible', (req, res) => {
 
 /**
  * 搜索节点
- * GET /api/tree/search?keyword=test&limit=50
+ * GET /api/tree/search?keyword=test&limit=50&offset=0&strategy=fuzzy&scopeNodeId=123
+ *
+ * 支持的查询参数：
+ * - keyword: 搜索关键词（必填）
+ * - strategy: 匹配策略 exact | fuzzy | regex | pinyin（默认 fuzzy）
+ * - limit: 返回条数（默认 50）
+ * - offset: 分页偏移（默认 0）
+ * - scopeNodeId: 限定子树范围（可选）
  */
 router.get('/search', (req, res) => {
   try {
     const keyword = req.query.keyword as string;
-    const limit = parseInt(req.query.limit as string) || 50;
 
     if (!keyword) {
       return res.status(400).json({ success: false, error: 'Keyword is required' });
     }
 
-    const nodes = searchNodes(keyword, limit);
-    res.json({ success: true, data: nodes });
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const strategy = (req.query.strategy as SearchStrategy) || 'fuzzy';
+    const scopeNodeId = req.query.scopeNodeId
+      ? parseInt(req.query.scopeNodeId as string)
+      : undefined;
+
+    const result = searchNodes({ keyword, strategy, limit, offset, scopeNodeId });
+    res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error searching nodes:', error);
     res.status(500).json({ success: false, error: 'Failed to search nodes' });

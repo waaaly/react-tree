@@ -12,13 +12,13 @@ import {
   getNodeCount as dbGetNodeCount,
   clearAllData as dbClearAllData,
   SQLiteTreeNode,
-} from '../db/sqlite.js';
+} from './sqlite.js';
 
 import {
   generateLargeTree,
   generateBalancedTree,
   LocalGenerateOptions,
-} from '../db/treeGenerator.js';
+} from './treeGenerator.js';
 
 import {
   NodeId,
@@ -28,6 +28,7 @@ import {
   NodeMap,
   ChildrenMap,
 } from '../components/tree.js';
+import type { SearchOptions, SearchResponse } from '../../shared/types.js';
 
 // ==================== 初始化 ====================
 
@@ -115,12 +116,10 @@ export async function getTreeVisibleNodes(
  * 搜索节点
  */
 export async function searchTreeNodes(
-  keyword: string,
-  limit: number = 50
-): Promise<VisiableNode[]> {
+  options: SearchOptions
+): Promise<SearchResponse> {
   await initTreeData();
-  const nodes = await dbSearchNodes(keyword, limit);
-  return nodes.map(toVisiableNode);
+  return await dbSearchNodes(options);
 }
 
 /**

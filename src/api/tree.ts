@@ -12,9 +12,9 @@ import {
   NodeMap,
   ChildrenMap,
 } from '../components/tree.js';
-import type { GenerateOptions } from '../../shared/types.js';
+import type { GenerateOptions, SearchOptions, SearchResponse, SearchNode } from '../../shared/types.js';
 
-export type { GenerateOptions };
+export type { GenerateOptions, SearchOptions, SearchResponse, SearchNode };
 
 // API 基础路径
 const API_BASE = '/api/tree';
@@ -113,15 +113,21 @@ export async function getTreeVisibleNodes(
  * 搜索节点
  */
 export async function searchTreeNodes(
-  keyword: string,
-  limit: number = 50
-): Promise<VisiableNode[]> {
-  const res = await fetch(
-    `${API_BASE}/search?keyword=${encodeURIComponent(keyword)}&limit=${limit}`
-  );
+  options: SearchOptions
+): Promise<SearchResponse> {
+  const { keyword, strategy, limit = 50, offset = 0, scopeNodeId } = options;
+  const params = new URLSearchParams({
+    keyword,
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (strategy) params.set('strategy', strategy);
+  if (scopeNodeId != null) params.set('scopeNodeId', String(scopeNodeId));
+
+  const res = await fetch(`${API_BASE}/search?${params.toString()}`);
   const json = await res.json();
   if (!json.success) throw new Error(json.error);
-  return json.data.map(toVisiableNode);
+  return json.data as SearchResponse;
 }
 
 /**

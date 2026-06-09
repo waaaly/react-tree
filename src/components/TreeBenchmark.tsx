@@ -33,7 +33,7 @@ const TreeBenchmark: React.FC = () => {
   const [childrenPerNode, setChildrenPerNode] = useState(5);
   const [results, setResults] = useState<BenchmarkResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
-  const [treeReady, setTreeReady] = useState(false);
+  const [treeReady, setTreeReady] = useState(true);
   const [progress, setProgress] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
 
